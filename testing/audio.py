@@ -3,7 +3,6 @@ from psychopy import prefs
 
 
 sound.Sound.backend = "ptb"
-# prefs.hardware(3)
 
 # Define a list of frequencies for the notes (in Hz)
 notes = [
