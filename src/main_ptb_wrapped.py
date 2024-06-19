@@ -3,17 +3,13 @@ import cv2
 from psychopy import core, sound, prefs
 import time
 import math
+import numpy
 
-
+# Setting the audio backend
 prefs.hardware['audioDevice'] = 0
 sound.Sound.backend = "ptb"
 
-# def play_piano_note(freq, duration):
-#     snd = sound.Sound(value=freq, secs=duration, sampleRate=44100, stereo=True)
-#     snd.play()
-#     print(freq)
-
-
+# Define frequencies for notes
 frequencies = [
     659.25, 622.25, 659.25, 622.25, 659.25, 493.88, 587.33, 523.25, 440.00, 261.63, 329.63, 440.00, 493.88, 329.63, 415.30,
     493.88, 523.25, 659.25, 659.25, 622.25, 659.25, 622.25, 659.25, 493.88, 587.33, 523.25, 440.00, 261.63, 329.63, 440.00, 493.88,
@@ -23,15 +19,19 @@ frequencies = [
     261.63, 246.94, 220.00
 ]
 
+# Preload sound objects
 notes_to_play = [sound.Sound(value=freq, secs=0.3, sampleRate=44100, stereo=True) for freq in frequencies]
 
+latency_array = []
 
+# Initialize hand pose detector and video capture
 detector = HandPoseDetector()
 cap = cv2.VideoCapture(1)
 
 state = 0
 counter = 0
 while cap.isOpened():
+    start_time = time.time()
     ret, frame = cap.read()
 
     if not ret:
@@ -49,29 +49,30 @@ while cap.isOpened():
             distance =  math.dist([index_pos.x, index_pos.y], [thumb_pos.x, thumb_pos.y])
 
             # Update state and counter based on the distance threshold
-            if distance >= 0.08 and state == 1:
+            if distance >= 0.1 and state == 1:
                 state = 0
-            elif distance < 0.08 and state == 0:
+            elif distance < 0.1 and state == 0:
                 state = 1
                 if counter == len(notes_to_play):
                     print("THE SONG 'FUR ELISE' HAS ENDED, THANK YOU!")
+                    print(f"Average Latency: {numpy.mean(latency_array):.4f} ms")
                     core.quit()
 
+                play_start_time = time.time()
                 notes_to_play[counter].play()
+                play_end_time = time.time()
+                
                 counter += 1
-
-                print("Counter:", counter)
-
-                        
-            # print("connected")
+                latency = (play_end_time - start_time)*1000
+                latency_array.append(latency)
+                print(f"Counter: {counter}, Latency: {latency:.4f} ms")
+                print(f"Playback Latency: {play_end_time-play_start_time:.4f}")
 
     cv2.imshow("Hand Pose", frame)
-
 
     if cv2.waitKey(1) & 0xFF == ord('q'):
         break
 
-
 core.wait(1.0)
 cap.release()
-cv2.destroyAllWindows
+cv2.destroyAllWindows()
