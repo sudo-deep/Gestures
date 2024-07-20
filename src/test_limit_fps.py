@@ -3,7 +3,7 @@ import cv2
 from psychopy import core, sound, prefs
 import time
 import math
-import numpy
+import numpy as np
 
 # Setting the audio backend
 prefs.hardware['audioDevice'] = 0
@@ -22,23 +22,45 @@ frequencies = [
 # Preload sound objects
 notes_to_play = [sound.Sound(value=freq, secs=0.3, sampleRate=44100, stereo=True) for freq in frequencies]
 
-latency_array = []
+total_latency_array = []
+frame_latency_array = []
+processing_latency_array = []
+audio_latency_array = []
 
 # Initialize hand pose detector and video capture
 detector = HandPoseDetector()
 cap = cv2.VideoCapture(0)
 
+# Check if the camera opened successfully
+if not cap.isOpened():
+    print("Error: Could not open video.")
+    exit()
+
 state = 0
 counter = 0
+
+# Define the target FPS
+target_fps = 15
+target_time = 1.0 / target_fps
+
 while cap.isOpened():
-    start_time = time.time()
+    total_start_time = time.time()
+    
+    # Frame input time
+    frame_start_time = time.time()
     ret, frame = cap.read()
+    frame_end_time = time.time()
+    frame_input_latency = (frame_end_time - frame_start_time) * 1000
 
     if not ret:
         break
 
+    # Hand pose detection time
+    process_start_time = time.time()
     hands = detector.detect_hand_pose(frame)
-    
+    process_end_time = time.time()
+    processing_latency = (process_end_time - process_start_time) * 1000
+
     if hands:
         for hand in hands:
             landmarks = hand.landmark
@@ -46,7 +68,7 @@ while cap.isOpened():
             thumb_pos = landmarks[4]
 
             # Calculate distance between index and thumb
-            distance =  math.dist([index_pos.x, index_pos.y], [thumb_pos.x, thumb_pos.y])
+            distance = math.dist([index_pos.x, index_pos.y], [thumb_pos.x, thumb_pos.y])
 
             # Update state and counter based on the distance threshold
             if distance >= 0.1 and state == 1:
@@ -55,20 +77,37 @@ while cap.isOpened():
                 state = 1
                 if counter == len(notes_to_play):
                     print("THE SONG 'FUR ELISE' HAS ENDED, THANK YOU!")
-                    print(f"Average Latency: {numpy.mean(latency_array):.4f} ms")
+                    print(f"Average Total Latency: {np.mean(total_latency_array):.4f} ms")
+                    print(f"Average Frame Input Latency: {np.mean(frame_latency_array):.4f} ms")
+                    print(f"Average Processing Latency: {np.mean(processing_latency_array):.4f} ms")
+                    print(f"Average Audio Output Latency: {np.mean(audio_latency_array):.4f} ms")
                     core.quit()
 
+                # Audio output time
                 play_start_time = time.time()
-                notes_to_play[counter].play()
+                notes_to_play[0].play()
                 play_end_time = time.time()
+                audio_output_latency = (play_end_time - play_start_time) * 1000
                 
                 counter += 1
-                latency = (play_end_time - start_time)*1000
-                latency_array.append(latency)
-                print(f"Counter: {counter}, Latency: {latency:.4f} ms")
-                print(f"Playback Latency: {play_end_time-play_start_time:.4f}")
+                total_latency = (play_end_time - total_start_time) * 1000
+                total_latency_array.append(total_latency)
+                frame_latency_array.append(frame_input_latency)
+                processing_latency_array.append(processing_latency)
+                audio_latency_array.append(audio_output_latency)
+                
+                print(f"Counter: {counter}, Total Latency: {total_latency:.4f} ms")
+                print(f"Frame Input Latency: {frame_input_latency:.4f} ms")
+                print(f"Processing Latency: {processing_latency:.4f} ms")
+                print(f"Audio Output Latency: {audio_output_latency:.4f} ms")
 
     cv2.imshow("Hand Pose", frame)
+
+    elapsed_time = time.time() - total_start_time
+    remaining_time = target_time - elapsed_time
+    
+    if remaining_time > 0:
+        time.sleep(remaining_time)
 
     if cv2.waitKey(1) & 0xFF == ord('q'):
         break
